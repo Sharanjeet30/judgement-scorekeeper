@@ -9,14 +9,16 @@ export default function Page(){
   function addPlayer(){ if(!playerName.trim()) return; const p:Player={id:crypto.randomUUID(),name:playerName.trim()}; setState(s=>({...s,players:[...s.players,p]})); setPlayerName(''); }
   function removePlayer(id:string){ setState(s=>({...s, players:s.players.filter(p=>p.id!==id), rounds:s.rounds.map(r=>{ const {[id]:_,...bids}=r.bids; const {[id]:__,...ok}=r.ok; return {...r,bids,ok}; }) })); }
   function buildPlan(desc:boolean){ const rows=generatePlanRows(state.players.length||4,desc); const rounds:Round[]=rows.map((row,idx)=>({ id:crypto.randomUUID(), index:idx+1, suit:row.suit, cards:row.cards, locked:false, bids:{}, ok:{} })); setState(s=>({...s,rounds})); }
-  function appendReverse(){ const max=maxCardsForPlayers(state.players.length||4); if(state.rounds.length===0) return buildPlan(false); const endsAtOne=state.rounds[state.rounds.length-1]?.cards===1; if(!endsAtOne) return; const startIndex=state.rounds.length; const rounds=[...state.rounds]; for(let c=1;c<=max;c++){ rounds.push({ id:crypto.randomUUID(), index:startIndex+(c), suit:SUITS[(startIndex+(c-1))%4], cards:c, locked:false, bids:{}, ok:{} }); } setState(s=>({...s,rounds})); }
-  function setBid(rid:string,pid:string,val:number){ setState(s=>({...s, rounds:s.rounds.map(r=>r.id===rid?{...r,bids:{...r.bids,[pid]:val}}:r)})); }
+  function appendReverse(){ const max=maxCardsForPlayers(state.players.length||4); if(state.rounds.length===0) return buildPlan(false); const endsAtOne=state.rounds[state.rounds.length-1]?.cards===1; if(!endsAtOne) return; const startIndex=state.rounds.length; const rounds=[...state.rounds]; for(let i=0;i<max;i++){ const cards=i+1; rounds.push({ id:crypto.randomUUID(), index:startIndex+i+1, suit:SUITS[(startIndex+i)%4], cards, locked:false, bids:{}, ok:{} }); } setState(s=>({...s,rounds})); }
+  function setBid(rid:string,pid:string,val:number|undefined){ setState(s=>({...s, rounds:s.rounds.map(r=>r.id===rid?{...r,bids:{...r.bids,[pid]:val as any}}:r)})); }
+  function clearOk(rid:string,pid:string){ setState(s=>({...s, rounds:s.rounds.map(r=>{ if(r.id!==rid) return r; const nextOk={...r.ok}; delete nextOk[pid]; return {...r, ok: nextOk}; }) })); }
   function setOk(rid:string,pid:string,value:boolean){ setState(s=>({...s, rounds:s.rounds.map(r=>r.id===rid?{...r,ok:{...r.ok,[pid]:value}}:r)})); }
   function lockRow(rid:string,locked:boolean){ setState(s=>({...s, rounds:s.rounds.map(r=>r.id===rid?{...r,locked}:r)})); }
   useEffect(()=>{ if(state.rounds.length===0) buildPlan(true); },[]);
   return (<main className="max-w-6xl mx-auto p-4 space-y-6">
-    <header className="flex items-center justify-between gap-2"><h1 className="text-2xl font-bold">Judgement Scorekeeper</h1>
-      <div className="flex items-center gap-2"><button onClick={()=>{clear();setState(newGame());}} className="px-3 py-1 rounded-xl border">New Game</button></div>
+    <header className="flex items-center justify-between gap-2">
+      <h1 className="text-2xl font-bold">Judgement Scorekeeper</h1>
+      <button onClick={()=>{clear();setState(newGame());}} className="px-3 py-1 rounded-xl border">New Game</button>
     </header>
     <section className="space-y-2">
       <div className="flex gap-2">
@@ -27,65 +29,79 @@ export default function Page(){
         <li key={p.id} className="px-3 py-1 rounded-full border flex items-center gap-2"><span>{p.name}</span><button onClick={()=>removePlayer(p.id)} className="text-sm opacity-60 hover:opacity-100">✕</button></li>
       ))}</ul>)}
     </section>
-    <section className="flex flex-wrap items-center gap-2">
-      <label className="flex items-center gap-2"><span>Scoring</span>
-        <select value={state.settings.scoringMode} onChange={(e)=>setState(s=>({...s,settings:{scoringMode:e.target.value as any}}))} className="border rounded-xl px-2 py-1">
-          <option value="BID_EQUALS_POINTS">Bid = points</option>
-          <option value="TEN_PLUS_BID">10 + bid</option>
-        </select>
-      </label>
-      <button onClick={()=>buildPlan(true)} className="px-3 py-2 rounded-xl border">Plan Max → 1</button>
-      <button onClick={()=>buildPlan(false)} className="px-3 py-2 rounded-xl border">Plan 1 → Max</button>
-      <button onClick={()=>appendReverse()} className="px-3 py-2 rounded-xl border">Append Reverse (1 → Max)</button>
+    <section className="space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2"><span>Scoring rule</span>
+          <select value={state.settings.scoringMode} onChange={(e)=>setState(s=>({...s,settings:{scoringMode:e.target.value as any}}))} className="border rounded-xl px-2 py-1">
+            <option value="TEN_PLUS_BID">Exact bid = 10 + bid (0-call = 10)</option>
+            <option value="BID_EQUALS_POINTS">Exact bid = bid (0-call = 0)</option>
+          </select>
+        </label>
+        <button onClick={()=>buildPlan(true)} className="px-3 py-2 rounded-xl border">Plan Max → 1</button>
+        <button onClick={()=>buildPlan(false)} className="px-3 py-2 rounded-xl border">Plan 1 → Max</button>
+        <button onClick={()=>appendReverse()} className="px-3 py-2 rounded-xl border">Append Reverse (1 → Max)</button>
+      </div>
+      <div className="help">Choose how exact bids score. Missed bids always score <span className="line-through">0</span>.</div>
     </section>
-    <section className="overflow-auto">
-      <table className="min-w-full text-sm">
+    <section className="overflow-auto table-card">
+      <table className="min-w-full text-sm table-fixed">
         <thead><tr className="text-left">
           <th className="p-2 w-28">Suit</th><th className="p-2 w-20">Cards</th>
           {state.players.map(p=>(<th key={p.id} className="p-2">{p.name}</th>))}
           <th className="p-2 w-24">Lock</th>
         </tr></thead>
         <tbody>
-          {state.rounds.map(r=>(
-            <tr key={r.id}>
+          {state.rounds.map(r=>{
+            const bidsEntered=state.players.filter(p=>r.bids[p.id]!==undefined);
+            const missing=state.players.filter(p=>r.bids[p.id]===undefined);
+            const sumEntered=bidsEntered.reduce((acc,p)=>acc+(r.bids[p.id]??0),0);
+            const forbidden=r.cards - sumEntered;
+            return (<tr key={r.id}>
               <td className="p-2">{r.suit}</td>
               <td className="p-2">{r.cards}</td>
               {state.players.map(p=>{
-                const bid=r.bids[p.id]??0; const ok=r.ok[p.id];
-                const pts=computePointsFromOk(r.bids[p.id], r.ok[p.id], state.settings.scoringMode);
-                return (<td key={p.id} className="p-2">
+                const bid=r.bids[p.id];
+                const ok=r.ok[p.id];
+                const pts=computePointsFromOk(bid, ok, state.settings.scoringMode);
+                const isLastToBid=!r.locked && missing.length===1 && missing[0].id===p.id;
+                const showWarn=isLastToBid && bid===forbidden;
+                return (<td key={p.id} className="p-2 align-top">
                   {!r.locked ? (
-                    <input type="number" min={0} value={bid} onChange={(e)=>setBid(r.id,p.id,Math.max(0,parseInt(e.target.value||'0')))} className="w-20 border rounded-xl px-2 py-1"/>
+                    <div className="space-y-1">
+                      <input type="number" min={0} value={bid ?? ''}
+                        onChange={(e)=>{ const v=e.target.value===''?undefined:Math.max(0,parseInt(e.target.value)); setBid(r.id,p.id,v as any);}}
+                        className={"w-20 border rounded-xl px-2 py-1 "+(showWarn?'border-red-500':'')}/>
+                      {isLastToBid && (<div className={"help "+(showWarn?'text-red-600':'')}>Can't bid <b>{forbidden}</b></div>)}
+                    </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <div className="w-10 text-right">{ok===false?<span className="line-through opacity-60">0</span>:pts}</div>
-                      <div className="flex gap-1">
-                        <button onClick={()=>setOk(r.id,p.id,true)} className={"h-7 w-7 rounded-full border flex items-center justify-center "+(ok===true?"bg-black text-white":"")} title="Made bid">✓</button>
-                        <button onClick={()=>setOk(r.id,p.id,false)} className={"h-7 w-7 rounded-full border flex items-center justify-center "+(ok===false?"bg-black text-white":"")} title="Missed bid">✗</button>
-                      </div>
+                      {ok===undefined ? (<>
+                        <button onClick={()=>setOk(r.id,p.id,true)} className="h-7 w-7 rounded-full border flex items-center justify-center hover:bg-gray-100" title="Made bid">✓</button>
+                        <button onClick={()=>setOk(r.id,p.id,false)} className="h-7 w-7 rounded-full border flex items-center justify-center hover:bg-gray-100" title="Missed bid">✗</button>
+                      </>) : (<>
+                        <div className="w-10 text-right">{ok===false?<span className="line-through opacity-60">0</span>:pts}</div>
+                        <button onClick={()=>clearOk(r.id,p.id)} className="badge opacity-60 hover:opacity-100" title="Redo result">Redo</button>
+                      </>)}
                     </div>
                   )}
                 </td>);
               })}
               <td className="p-2">{!r.locked ? (<button onClick={()=>lockRow(r.id,true)} className="px-3 py-1 rounded-xl border">Lock</button>) : (<button onClick={()=>lockRow(r.id,false)} className="px-3 py-1 rounded-xl border">Unlock</button>)}</td>
-            </tr>
-          ))}
-          <tr>
-            <td className="p-2 font-medium">Total</td><td className="p-2" />
-            {state.players.map(p=>(<td key={p.id} className="p-2 font-medium">{totals[p.id]??0}</td>))}
-            <td className="p-2"/>
-          </tr>
+            </tr>);})}
+          <tr><td className="p-2 font-medium">Total</td><td className="p-2" />{state.players.map(p=>(<td key={p.id} className="p-2 font-medium">{totals[p.id]??0}</td>))}<td className="p-2"/></tr>
         </tbody>
       </table>
     </section>
     <section className="prose max-w-none">
       <h2 className="text-lg font-semibold mt-6">How to play Judgement (Oh Hell)</h2>
       <ol className="list-decimal pl-5 space-y-1 text-sm">
-        <li>Deal N cards to each player (N depends on players). Trump rotates in order <b>Spades → Hearts → Clubs → Diamonds</b>.</li>
-        <li>Before play, each player <b>bids</b> tricks. Enter bids, then <b>Lock</b> the row.</li>
-        <li>After the round, mark ✓ if the player matched their bid or ✗ if not. The cell shows points.</li>
-        <li><b>Scoring:</b> <i>10 + bid</i> (default) → exact bid scores 10+bid (0-call exact = 10). <i>Bid = points</i> → exact bid scores bid. Misses score <span className="line-through">0</span>.</li>
-        <li>Use <b>Plan</b> buttons to prefill rows: Max→1 or 1→Max, auto-sized by players. Use <b>Append Reverse</b> to continue 1→Max on the same table.</li>
+        <li><b>Deal & trump:</b> Deal N cards to each player (N auto-chosen by players). Trump rotates: <b>Spades → Hearts → Clubs → Diamonds</b>.</li>
+        <li><b>Bidding:</b> Before play, each player bids how many tricks they expect to win. Enter bids, then click <b>Lock</b>. <i>Last bidder rule:</i> when only one player remains to bid, they cannot bid the number that makes total bids equal the number of cards for that round.</li>
+        <li><b>Play a trick:</b> Leader plays any card. Others must follow the led suit if possible. If you cannot follow suit, you may play any card, including a trump.</li>
+        <li><b>Who wins each trick:</b> If no one plays trump, the highest card of the led suit wins. If any trump is played, the highest trump wins. Only a higher trump can beat a trump.</li>
+        <li><b>Scoring:</b> Choose a rule above. In <i>Exact = 10 + bid</i>, a correct bid scores <b>10 + bid</b> (0-call exact = <b>10</b>). In <i>Exact = bid</i>, a correct bid scores the bid. Misses always score <span className="line-through">0</span>.</li>
+        <li><b>Recording results:</b> After the round, click ✓ (made) or ✗ (missed). The buttons disappear and only points remain; use <b>Redo</b> if you need to change.</li>
+        <li><b>Continuing:</b> Use <b>Plan</b> to set up rounds (Max→1 or 1→Max). After reaching 1, <b>Append Reverse</b> continues 1→Max on the same table.</li>
       </ol>
     </section>
   </main>);
