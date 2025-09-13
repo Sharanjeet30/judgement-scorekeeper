@@ -4,6 +4,7 @@ export type Round = {
   id: string;
   index: number;          // 1-based round number
   trump: string;          // Hearts/Spades/Clubs/Diamonds/NoTrumps
+  cards: number;          // number of cards dealt this round
   bids: Record<string, number>;   // playerId -> bid
   tricks: Record<string, number>; // playerId -> actual
   locked: boolean;
@@ -22,7 +23,7 @@ export type GameState = {
   settings: GameSettings;
 };
 
-const KEY = "judgement-scorekeeper:v1";
+const KEY = "judgement-scorekeeper:v2";
 
 export function load(): GameState | null {
   if (typeof window === "undefined") return null;
@@ -30,9 +31,7 @@ export function load(): GameState | null {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 export function save(state: GameState) {
@@ -52,7 +51,7 @@ export function newGame(): GameState {
     createdAt: Date.now(),
     players: [],
     rounds: [],
-    settings: { scoringMode: "BID_EQUALS_POINTS", allowNoTrumps: true },
+    settings: { scoringMode: "TEN_PLUS_BID", allowNoTrumps: true },
   };
 }
 
@@ -91,4 +90,13 @@ export function standingsByRound(state: GameState): Array<Record<string, number>
     hist.push({ ...running });
   }
   return hist;
+}
+
+export function generatePlan(playerCount: number, direction: "ASC" | "DESC"): number[] {
+  // For 4 players: 13..1 or 1..13 ; For 5 players: 10..1 or 1..10
+  const start = playerCount === 5 ? 10 : 13;
+  const seq: number[] = [];
+  if (direction === "DESC") for (let c = start; c >= 1; c--) seq.push(c);
+  else for (let c = 1; c <= start; c++) seq.push(c);
+  return seq;
 }

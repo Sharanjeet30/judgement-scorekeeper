@@ -3,15 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   GameState, Player, Round, newGame, load, save, clear,
-  totalsByPlayer, standingsByRound, computePoints
+  totalsByPlayer, standingsByRound, computePoints, generatePlan
 } from "@/lib/storage";
 
 const SUITS = ["Spades", "Hearts", "Clubs", "Diamonds", "NoTrumps"] as const;
 type Suit = typeof SUITS[number];
-
-function cn(...c: Array<string | false | null | undefined>) {
-  return c.filter(Boolean).join(" ");
-}
 
 export default function Home() {
   const [state, setState] = useState<GameState>(() => load() ?? newGame());
@@ -47,6 +43,7 @@ export default function Home() {
       id: crypto.randomUUID(),
       index: state.rounds.length + 1,
       trump: state.settings.allowNoTrumps ? "NoTrumps" : "Spades",
+      cards: 1,
       bids: {},
       tricks: {},
       locked: false,
@@ -56,6 +53,10 @@ export default function Home() {
 
   function setTrump(rid: string, suit: Suit) {
     setState(s => ({ ...s, rounds: s.rounds.map(r => r.id === rid ? { ...r, trump: suit } : r) }));
+  }
+
+  function setCards(rid: string, val: number) {
+    setState(s => ({ ...s, rounds: s.rounds.map(r => r.id === rid ? { ...r, cards: Math.max(1, val) } : r) }));
   }
 
   function setBid(rid: string, pid: string, val: number) {
@@ -91,17 +92,13 @@ export default function Home() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const next = JSON.parse(String(reader.result));
-        setState(next);
-      } catch {
-        alert("Invalid JSON");
-      }
+      try { setState(JSON.parse(String(reader.result))); }
+      catch { alert("Invalid JSON"); }
     };
     reader.readAsText(file);
   }
 
-  useEffect(() => { if (state.rounds.length === 0) addRound(); /* ensure initial round */ }, []);
+  useEffect(() => { if (state.rounds.length === 0) addRound(); }, []);
 
   return (
     <main className="max-w-5xl mx-auto p-4 space-y-6">
@@ -173,6 +170,40 @@ export default function Home() {
           <h2 className="text-lg font-semibold">Rounds</h2>
           <div className="flex items-center gap-2">
             <button onClick={addRound} className="px-3 py-2 rounded-xl bg-black text-white">Add Round</button>
+            <button
+              onClick={() => {
+                const seq = generatePlan(state.players.length, "DESC");
+                const order = ["Spades","Hearts","Clubs","Diamonds"] as const;
+                const rounds = seq.map((cards, idx) => ({
+                  id: crypto.randomUUID(),
+                  index: idx + 1,
+                  trump: order[idx % order.length],
+                  cards,
+                  bids: {},
+                  tricks: {},
+                  locked: false,
+                }));
+                setState(s => ({ ...s, rounds }));
+              }}
+              className="px-3 py-2 rounded-xl border"
+            >Plan 13/10 → 1</button>
+            <button
+              onClick={() => {
+                const seq = generatePlan(state.players.length, "ASC");
+                const order = ["Spades","Hearts","Clubs","Diamonds"] as const;
+                const rounds = seq.map((cards, idx) => ({
+                  id: crypto.randomUUID(),
+                  index: idx + 1,
+                  trump: order[idx % order.length],
+                  cards,
+                  bids: {},
+                  tricks: {},
+                  locked: false,
+                }));
+                setState(s => ({ ...s, rounds }));
+              }}
+              className="px-3 py-2 rounded-xl border"
+            >Plan 1 → 13/10</button>
           </div>
         </div>
 
@@ -182,13 +213,23 @@ export default function Home() {
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-3">
                   <span className="font-medium">Round {r.index}</span>
+                  <label className="flex items-center gap-2">
+                    <span className="opacity-70 text-sm">Cards</span>
+                    <input type="number" min={1} value={r.cards}
+                      onChange={(e)=> setCards(r.id, parseInt(e.target.value || "1"))}
+                      disabled={r.locked}
+                      className="w-20 border rounded-xl px-2 py-1"
+                    />
+                  </label>
                   <select
                     value={r.trump}
                     onChange={(e) => setTrump(r.id, e.target.value as Suit)}
                     disabled={r.locked}
                     className="border rounded-xl px-2 py-1"
                   >
-                    {SUITS.map(s => (<option key={s} value={s}>{s}</option>))}
+                    {["Spades","Hearts","Clubs","Diamonds"].concat(state.settings.allowNoTrumps?["NoTrumps"]:[]).map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
@@ -205,6 +246,7 @@ export default function Home() {
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="text-left">
+                      <th className="p-2">Cards</th>
                       <th className="p-2">Player</th>
                       <th className="p-2">Bid</th>
                       <th className="p-2">Tricks</th>
@@ -216,28 +258,30 @@ export default function Home() {
                       const bid = r.bids[p.id] ?? 0;
                       const tricks = r.tricks[p.id] ?? 0;
                       const pts = computePoints(bid, tricks, state.settings.scoringMode);
+                      const missed = (r.bids[p.id] !== undefined && r.tricks[p.id] !== undefined && r.bids[p.id] !== r.tricks[p.id]);
                       return (
                         <tr key={p.id} className="border-t">
+                          <td className="p-2">{r.cards}</td>
                           <td className="p-2">{p.name}</td>
                           <td className="p-2">
-                            <input
-                              type="number" min={0}
-                              value={bid}
+                            <input type="number" min={0} value={bid}
                               onChange={(e) => setBid(r.id, p.id, Math.max(0, parseInt(e.target.value || "0")))}
                               disabled={r.locked}
                               className="w-20 border rounded-xl px-2 py-1"
                             />
                           </td>
                           <td className="p-2">
-                            <input
-                              type="number" min={0}
-                              value={tricks}
+                            <input type="number" min={0} value={tricks}
                               onChange={(e) => setTrick(r.id, p.id, Math.max(0, parseInt(e.target.value || "0")))}
                               disabled={r.locked}
                               className="w-20 border rounded-xl px-2 py-1"
                             />
                           </td>
-                          <td className="p-2 font-medium">{pts}</td>
+                          {missed ? (
+                            <td className="p-2 font-medium"><span className="line-through opacity-60">0</span></td>
+                          ) : (
+                            <td className="p-2 font-medium">{pts}</td>
+                          )}
                         </tr>
                       );
                     })}
@@ -272,9 +316,7 @@ export default function Home() {
                     <td className="p-2">{idx + 1}</td>
                     <td className="p-2">{p.name}</td>
                     <td className="p-2 font-medium">{total}</td>
-                    <td className="p-2">
-                      <Sparkline data={series} max={max} />
-                    </td>
+                    <td className="p-2"><Sparkline data={series} max={max} /></td>
                   </tr>
                 );
               })}
