@@ -1,1 +1,50 @@
-@tailwind base;@tailwind components;@tailwind utilities;:root{--bg:255 255 255;--fg:17 24 39;}html,body{height:100%}body{color:rgb(var(--fg));background:rgb(var(--bg))}.header{@apply flex items-center justify-between gap-2}.brand{@apply text-3xl font-extrabold tracking-tight}.button{@apply px-3 py-2 rounded-xl border shadow-sm hover:shadow transition;@apply bg-white text-gray-900 border-gray-200;@apply dark:bg-neutral-900 dark:text-gray-100 dark:border-neutral-700}.primary{@apply bg-black text-white border-black hover:opacity-90;@apply dark:bg-white dark:text-black dark:border-white}.pill{@apply px-3 py-1 rounded-full border;@apply bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-700}.table-card{@apply border rounded-2xl shadow-sm overflow-hidden;@apply bg-white border-gray-200;@apply dark:bg-neutral-900 dark:border-neutral-700}thead th{@apply bg-gray-50 dark:bg-neutral-800}tbody tr:nth-child(odd) td{@apply bg-white dark:bg-neutral-900}tbody tr:nth-child(even) td{@apply bg-gray-50/60 dark:bg-neutral-850}td,th{@apply border-b border-gray-200 dark:border-neutral-700}tbody tr:last-child td{@apply border-b-0}.help{@apply text-xs text-gray-500 dark:text-gray-400}.statcard{@apply border rounded-xl shadow-sm p-3 text-sm;@apply bg-white border-gray-200;@apply dark:bg-neutral-900 dark:border-neutral-700}.statheader{@apply text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400}.statbig{@apply text-base font-semibold}.suit{@apply inline-flex items-center gap-1 font-medium}.suit .sym{@apply text-lg leading-none}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Light/Dark colors handled by Tailwind class strategy; we toggle 'dark' on <html>. */
+:root { --bg: 255 255 255; --fg: 17 24 39; }
+html, body { height: 100%; }
+body { color: rgb(var(--fg)); background: rgb(var(--bg)); }
+
+.header { @apply flex items-center justify-between gap-2; }
+.brand { @apply text-3xl font-extrabold tracking-tight; }
+
+.button {
+  @apply px-3 py-2 rounded-xl border shadow-sm hover:shadow transition;
+  @apply bg-white text-gray-900 border-gray-200;
+  @apply dark:bg-neutral-900 dark:text-gray-100 dark:border-neutral-700;
+}
+.primary {
+  @apply bg-black text-white border-black hover:opacity-90;
+  @apply dark:bg-white dark:text-black dark:border-white;
+}
+
+.pill { @apply px-3 py-1 rounded-full border; @apply bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-700; }
+
+.table-card {
+  @apply border rounded-2xl shadow-sm overflow-hidden;
+  @apply bg-white border-gray-200;
+  @apply dark:bg-neutral-900 dark:border-neutral-700;
+}
+thead th { @apply bg-gray-50 dark:bg-neutral-800; }
+tbody tr:nth-child(odd) td { @apply bg-white dark:bg-neutral-900; }
+/* FIX: avoid non-existent dark:bg-neutral-850 and avoid opacity variants in @apply */
+tbody tr:nth-child(even) td { @apply bg-gray-50 dark:bg-neutral-800; }
+td, th { @apply border-b border-gray-200 dark:border-neutral-700; }
+tbody tr:last-child td { @apply border-b-0; }
+
+.help { @apply text-xs text-gray-500 dark:text-gray-400; }
+
+.statcard {
+  @apply border rounded-xl shadow-sm p-3 text-sm;
+  @apply bg-white border-gray-200;
+  @apply dark:bg-neutral-900 dark:border-neutral-700;
+}
+.statheader { @apply text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400; }
+.statbig { @apply text-base font-semibold; }
+
+/* small helper for suit symbol sizing */
+.suit { @apply inline-flex items-center gap-1 font-medium; }
+.suit .sym { @apply text-lg leading-none; }
