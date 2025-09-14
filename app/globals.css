@@ -3,9 +3,8 @@
 @tailwind utilities;
 
 /* Base */
-:root { --bg: 255 255 255; --fg: 17 24 39; }
 html, body { height: 100%; }
-body { color: rgb(var(--fg)); background: rgb(var(--bg)); }
+body { @apply bg-white text-gray-900 dark:bg-neutral-950 dark:text-gray-100; }
 
 /* Components */
 .header { @apply flex items-center justify-between gap-3; }
@@ -17,38 +16,24 @@ body { color: rgb(var(--fg)); background: rgb(var(--bg)); }
   @apply focus:outline-none focus:ring-2 focus:ring-black/20;
   @apply dark:bg-neutral-900 dark:text-gray-100 dark:border-neutral-700 dark:focus:ring-white/20;
 }
-.primary {
-  @apply bg-black text-white border-black hover:opacity-90;
-  @apply dark:bg-white dark:text-black dark:border-white;
-}
+.primary { @apply bg-black text-white border-black hover:opacity-90 dark:bg-white dark:text-black dark:border-white; }
 
-.pill {
-  @apply px-3 py-1 rounded-full border;
-  @apply bg-white border-gray-200 text-gray-900;
-  @apply dark:bg-neutral-900 dark:border-neutral-700 dark:text-gray-100;
-}
+.pill { @apply px-3 py-1 rounded-full border bg-white border-gray-200 text-gray-900 dark:bg-neutral-900 dark:border-neutral-700 dark:text-gray-100; }
 
-/* Input group (Add player) */
+/* Inputs */
 .input-group { @apply flex items-stretch gap-2 w-full; }
-.input-base {
-  @apply border rounded-xl px-3 py-2 w-full;
-  @apply bg-white text-gray-900 placeholder:text-gray-400 border-gray-200;
-  @apply focus:outline-none focus:ring-2 focus:ring-black/20;
-  @apply dark:bg-neutral-900 dark:text-gray-100 dark:placeholder:text-gray-400 dark:border-neutral-700 dark:focus:ring-white/20;
-}
-.input-add {
-  @apply primary;
-  @apply min-w-[80px]; /* ensure visible label */
-}
+.input-base { @apply border rounded-xl px-3 py-2 w-full bg-white text-gray-900 placeholder:text-gray-400 border-gray-200 focus:outline-none focus:ring-2 focus:ring-black/20 dark:bg-neutral-900 dark:text-gray-100 dark:placeholder:text-gray-400 dark:border-neutral-700 dark:focus:ring-white/20; }
+.input-add  { @apply primary min-w-[90px] rounded-xl; }
 
 /* Cards & table */
-.card      { @apply border rounded-2xl shadow-sm; @apply bg-white border-gray-200; @apply dark:bg-neutral-900 dark:border-neutral-700; }
-.statcard  { @apply card p-3 text-sm; }
-.table-card{ @apply card overflow-hidden; }
-thead th   { @apply bg-gray-50 text-gray-700 dark:bg-neutral-800 dark:text-gray-200; }
+.card       { @apply border rounded-2xl shadow-sm bg-white border-gray-200 dark:bg-neutral-900 dark:border-neutral-700; }
+.statcard   { @apply card p-3 text-sm; }
+.table-card { @apply card overflow-hidden; }
+thead th    { @apply bg-gray-50 text-gray-700 dark:bg-neutral-800 dark:text-gray-100; }
+tbody td    { @apply text-gray-900 dark:text-gray-100; }
 tbody tr:nth-child(odd) td { @apply bg-white dark:bg-neutral-900; }
 tbody tr:nth-child(even) td{ @apply bg-gray-50 dark:bg-neutral-800; }
-td, th     { @apply border-b border-gray-200 dark:border-neutral-700; }
+td, th      { @apply border-b border-gray-200 dark:border-neutral-700; }
 tbody tr:last-child td { @apply border-b-0; }
 
 .help { @apply text-xs text-gray-500 dark:text-gray-400; }

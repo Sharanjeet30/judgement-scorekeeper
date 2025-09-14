@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   GameState, Player, Round, newGame, load, save, clear,
   generatePlanRows, totalsByPlayer, computePointsFromOk, SUITS, maxCardsForPlayers,
@@ -37,7 +37,26 @@ export default function Page() {
   const { theme, toggle } = useTheme();
   const hasSupabase = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
+  // Live sync controls
+  const [live, setLive] = useState(false);
+  const channelRef = useRef<ReturnType<NonNullable<ReturnType<typeof getSupabase>>>["channel"] | null>(null);
+  const selfUpdate = useRef(false); // prevent loops
+
   useEffect(() => { save(state); }, [state]);
+
+  // Load from URL ?id=...
+  useEffect(() => {
+    if (!hasSupabase) return;
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+    if (!id) return;
+    (async () => {
+      const sb = getSupabase()!;
+      const { data } = await sb.from("games").select("data").eq("id", id).maybeSingle();
+      if (data?.data) setState(data.data as GameState);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasSupabase]);
 
   const totals = useMemo(() => totalsByPlayer(state), [state]);
   const playersSorted = useMemo(() => [...state.players].sort((a,b)=> totals[b.id]-totals[a.id]), [state.players, totals]);
@@ -155,7 +174,7 @@ export default function Page() {
   const statMsg = stats.length ? stats[statIndex % stats.length] : "Add players and rounds to see live stats.";
   useEffect(() => { setStatIndex(0); }, [state.players.length, state.rounds.length]);
 
-  // Cloud save/load (Supabase)
+  // Cloud save/load (manual)
   async function saveCloud() {
     const sb = getSupabase();
     if (!sb) { alert("Supabase env vars missing."); return; }
@@ -173,6 +192,48 @@ export default function Page() {
     setState(data.data as GameState);
   }
 
+  // Live sync: publish on state changes; subscribe to DB changes
+  useEffect(() => {
+    if (!live || !hasSupabase) return;
+    const sb = getSupabase()!;
+    // ensure row exists
+    sb.from("games").upsert({ id: state.id, data: state });
+    // subscribe to updates on this id
+    const channel = sb.channel("games_" + state.id)
+      .on("postgres_changes", { event: "*", schema: "public", table: "games", filter: `id=eq.${state.id}` },
+        (payload) => {
+          if (selfUpdate.current) return; // ignore echo
+          const incoming = (payload.new as any)?.data as GameState | undefined;
+          if (incoming && incoming.createdAt >= (state.createdAt ?? 0)) {
+            setState(incoming);
+          }
+        })
+      .subscribe();
+    channelRef.current = channel;
+    return () => { sb.removeChannel(channel); channelRef.current = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, hasSupabase, state.id]);
+
+  // publish on state changes (throttled)
+  const publishTimer = useRef<any>(null);
+  useEffect(() => {
+    if (!live || !hasSupabase) return;
+    if (publishTimer.current) clearTimeout(publishTimer.current);
+    publishTimer.current = setTimeout(async () => {
+      selfUpdate.current = true;
+      const sb = getSupabase()!;
+      await sb.from("games").upsert({ id: state.id, data: state });
+      selfUpdate.current = false;
+    }, 350);
+  }, [state, live, hasSupabase]);
+
+  function copyShareLink() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("id", state.id);
+    navigator.clipboard.writeText(url.toString());
+    alert("Link copied! Share it with players to view/edit live.");
+  }
+
   // Initialize default plan
   useEffect(() => { if (state.rounds.length === 0) buildPlan(true); }, []);
 
@@ -187,6 +248,10 @@ export default function Page() {
           {hasSupabase && (<>
             <button onClick={saveCloud} className="button">Save Cloud</button>
             <button onClick={loadCloud} className="button">Load Cloud</button>
+            <button onClick={() => setLive(l => !l)} className={"button " + (live ? "primary" : "")}>
+              {live ? "Live: ON" : "Live: OFF"}
+            </button>
+            <button onClick={copyShareLink} className="button">Share Link</button>
           </>)}
           <button onClick={() => { clear(); setState(newGame()); }} className="button">New Game</button>
         </div>
@@ -202,7 +267,7 @@ export default function Page() {
             className="input-base"
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPlayer(); } }}
           />
-          <button onClick={addPlayer} className="input-add rounded-xl">Add</button>
+          <button onClick={addPlayer} className="input-add">Add</button>
         </div>
         {state.players.length > 0 && (
           <ul className="flex flex-wrap gap-2">
@@ -291,9 +356,7 @@ export default function Page() {
                                 <button onClick={() => setOk(r.id, p.id, false)} className="button h-7 w-7 !p-0">✗</button>
                               </>
                             ) : (
-                              <div className="w-10 text-right">
-                                {ok === false ? <span className="line-through opacity-60">0</span> : pts}
-                              </div>
+                              <div className="w-10 text-right">{ok === false ? <span className="line-through opacity-60">0</span> : pts}</div>
                             )}
                           </div>
                         )}
@@ -313,9 +376,7 @@ export default function Page() {
             <tr>
               <td className="p-2 font-medium">Total</td>
               <td className="p-2" />
-              {state.players.map(p => (
-                <td key={p.id} className="p-2 font-medium">{totals[p.id] ?? 0}</td>
-              ))}
+              {state.players.map(p => (<td key={p.id} className="p-2 font-medium">{totals[p.id] ?? 0}</td>))}
               <td className="p-2" />
             </tr>
           </tbody>
