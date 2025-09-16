@@ -85,6 +85,16 @@ export default function Page() {
   }
 
   function buildPlan(descending: boolean) {
+    if (state.rounds.length > 0) {
+      const planLabel = descending ? "Max → 1" : "1 → Max";
+      const pepTalk = descending
+        ? "We\'re about to deal from the top and march down to a single dramatic card."
+        : "We\'re starting tiny hands and climbing all the way to the grand finale."
+      const ok = window.confirm(
+        `Switch to the ${planLabel} plan?\n${pepTalk}\nThis replaces your current rounds—did everyone actually agree?`
+      );
+      if (!ok) return;
+    }
     const rows = generatePlanRows(state.players.length || 4, descending);
     const rounds: Round[] = rows.map((row, idx) => ({
       id: crypto.randomUUID(),
@@ -103,6 +113,10 @@ export default function Page() {
     if (state.rounds.length === 0) return buildPlan(false);
     const endsAtOne = state.rounds[state.rounds.length - 1]?.cards === 1;
     if (!endsAtOne) return;
+    const ok = window.confirm(
+      "Append more rounds back to Max? Are you sure you want to append? Do all players agree? This saga might get lengthy!"
+    );
+    if (!ok) return;
     const startIndex = state.rounds.length;
     const rounds = [...state.rounds];
     for (let i = 0; i < max; i++) {
@@ -177,7 +191,13 @@ export default function Page() {
   const stats = computeStats();
   const [statIndex, setStatIndex] = useState(0);
   const statMsg = stats.length ? stats[statIndex % stats.length] : "Add players and rounds to see live stats.";
+  const statsKey = JSON.stringify(stats);
   useEffect(() => { setStatIndex(0); }, [state.players.length, state.rounds.length]);
+  useEffect(() => {
+    if (stats.length <= 1) return;
+    const timer = setInterval(() => { setStatIndex((i) => i + 1); }, 5000);
+    return () => clearInterval(timer);
+  }, [stats.length, statsKey]);
   const hasLockedRounds = useMemo(() => state.rounds.some(r => r.locked), [state.rounds]);
 
   // Cloud save/load (manual)
@@ -233,11 +253,39 @@ export default function Page() {
     }, 350);
   }, [state, live, hasSupabase]);
 
-  function copyShareLink() {
+  async function copyShareLink() {
     const url = new URL(window.location.href);
     url.searchParams.set("id", state.id);
-    navigator.clipboard.writeText(url.toString());
-    alert("Link copied! Share it with players to view/edit live.");
+    const shareUrl = url.toString();
+    let copied = false;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        copied = true;
+      } catch {
+        // Fallback handled below
+      }
+    }
+    if (!copied) {
+      window.prompt("Copy this link:", shareUrl);
+    }
+    if (!live) setLive(true);
+    if (hasSupabase) {
+      const sb = getSupabase();
+      if (sb) {
+        try {
+          selfUpdate.current = true;
+          await sb.from("games").upsert({ id: state.id, data: state });
+        } finally {
+          selfUpdate.current = false;
+        }
+      }
+    }
+    if (copied) {
+      alert("Link copied! Live sync is on—share it with players to view/edit together.");
+    } else {
+      alert("Live sync is on. Copy the link above to share it with players.");
+    }
   }
 
   function scrollToHowTo() {
@@ -299,11 +347,18 @@ export default function Page() {
   </foreignObject>
 </svg>`;
 
-      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+      const svgUrl = URL.createObjectURL(blob);
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
         const image = new Image();
-        image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error("Could not load image"));
+        image.onload = () => {
+          URL.revokeObjectURL(svgUrl);
+          resolve(image);
+        };
+        image.onerror = () => {
+          URL.revokeObjectURL(svgUrl);
+          reject(new Error("Could not load image"));
+        };
         image.src = svgUrl;
       });
 
@@ -414,34 +469,40 @@ export default function Page() {
       </section>
 
       {/* Controls + Stats */}
-      <section className="flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => buildPlan(true)}
-          className="button"
-          title="Create rounds that count down from the maximum hand size to one card."
-        >
-          Create Descending Plan (Max → 1)
-        </button>
-        <button
-          onClick={() => buildPlan(false)}
-          className="button"
-          title="Create rounds that build up from one card to the maximum hand size."
-        >
-          Create Ascending Plan (1 → Max)
-        </button>
-        <button
-          onClick={() => appendReverse()}
-          className="button"
-          title="After reaching one card, add another set of rounds that climb back to the maximum."
-        >
-          Append Ascending Rounds (1 → Max)
-        </button>
+      <section className="space-y-2">
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          Pick your adventure: choose a Max → 1 countdown, a 1 → Max climb, or tack on extra rounds once the table hits
+          a single card.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => buildPlan(true)}
+            className="button"
+            title="Create rounds that count down from the maximum hand size to one card."
+          >
+            Create Descending Plan (Max → 1)
+          </button>
+          <button
+            onClick={() => buildPlan(false)}
+            className="button"
+            title="Create rounds that build up from one card to the maximum hand size."
+          >
+            Create Ascending Plan (1 → Max)
+          </button>
+          <button
+            onClick={() => appendReverse()}
+            className="button"
+            title="After reaching one card, add another set of rounds that climb back to the maximum."
+          >
+            Append Ascending Rounds (1 → Max)
+          </button>
+        </div>
       </section>
 
       <section className="statcard cursor-pointer" onClick={()=> setStatIndex(i=> i+1)}>
         <div className="statheader">Live stat</div>
         <div className="statbig">{statMsg}</div>
-        <div className="help">Click for next</div>
+        <div className="help">Switches every 5s — click for next</div>
       </section>
 
       {/* Single Table */}
@@ -482,7 +543,8 @@ export default function Page() {
                     const ok = r.ok[p.id];
                     const pts = computePointsFromOk(bid, ok);
                     const isLastToBid = !r.locked && missing.length === 1 && missing[0].id === p.id;
-                    const showWarn = isLastToBid && bid === forbidden;
+                    const canBidAnything = isLastToBid && forbidden < 0;
+                    const showWarn = isLastToBid && forbidden >= 0 && bid === forbidden;
                     return (
                       <td key={p.id} className="p-2 align-top">
                         {!r.locked ? (
@@ -497,8 +559,10 @@ export default function Page() {
                               className={"input-base table-input " + (showWarn ? "border-red-500 focus:ring-red-500/30" : "")}
                             />
                             {isLastToBid && (
-                              <div className={"help " + (showWarn ? "text-red-600" : "")}> 
-                                Can&apos;t bid <b>{forbidden}</b>
+                              <div
+                                className={`help ${showWarn ? "text-red-600 dark:text-rose-400" : ""} ${canBidAnything ? "text-emerald-600 dark:text-emerald-400" : ""}`}
+                              >
+                                {canBidAnything ? "Can bid anything" : <>Can&apos;t bid <b>{forbidden}</b></>}
                               </div>
                             )}
                           </div>
