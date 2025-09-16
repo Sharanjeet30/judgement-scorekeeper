@@ -85,6 +85,16 @@ export default function Page() {
   }
 
   function buildPlan(descending: boolean) {
+    if (state.rounds.length > 0) {
+      const planLabel = descending ? "Max → 1" : "1 → Max";
+      const pepTalk = descending
+        ? "We\'re about to deal from the top and march down to a single dramatic card."
+        : "We\'re starting tiny hands and climbing all the way to the grand finale."
+      const ok = window.confirm(
+        `Switch to the ${planLabel} plan?\n${pepTalk}\nThis replaces your current rounds—did everyone actually agree?`
+      );
+      if (!ok) return;
+    }
     const rows = generatePlanRows(state.players.length || 4, descending);
     const rounds: Round[] = rows.map((row, idx) => ({
       id: crypto.randomUUID(),
@@ -103,6 +113,10 @@ export default function Page() {
     if (state.rounds.length === 0) return buildPlan(false);
     const endsAtOne = state.rounds[state.rounds.length - 1]?.cards === 1;
     if (!endsAtOne) return;
+    const ok = window.confirm(
+      "Append more rounds back to Max? Are you sure you want to append? Do all players agree? This saga might get lengthy!"
+    );
+    if (!ok) return;
     const startIndex = state.rounds.length;
     const rounds = [...state.rounds];
     for (let i = 0; i < max; i++) {
@@ -455,28 +469,34 @@ export default function Page() {
       </section>
 
       {/* Controls + Stats */}
-      <section className="flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => buildPlan(true)}
-          className="button"
-          title="Create rounds that count down from the maximum hand size to one card."
-        >
-          Create Descending Plan (Max → 1)
-        </button>
-        <button
-          onClick={() => buildPlan(false)}
-          className="button"
-          title="Create rounds that build up from one card to the maximum hand size."
-        >
-          Create Ascending Plan (1 → Max)
-        </button>
-        <button
-          onClick={() => appendReverse()}
-          className="button"
-          title="After reaching one card, add another set of rounds that climb back to the maximum."
-        >
-          Append Ascending Rounds (1 → Max)
-        </button>
+      <section className="space-y-2">
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          Pick your adventure: choose a Max → 1 countdown, a 1 → Max climb, or tack on extra rounds once the table hits
+          a single card.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => buildPlan(true)}
+            className="button"
+            title="Create rounds that count down from the maximum hand size to one card."
+          >
+            Create Descending Plan (Max → 1)
+          </button>
+          <button
+            onClick={() => buildPlan(false)}
+            className="button"
+            title="Create rounds that build up from one card to the maximum hand size."
+          >
+            Create Ascending Plan (1 → Max)
+          </button>
+          <button
+            onClick={() => appendReverse()}
+            className="button"
+            title="After reaching one card, add another set of rounds that climb back to the maximum."
+          >
+            Append Ascending Rounds (1 → Max)
+          </button>
+        </div>
       </section>
 
       <section className="statcard cursor-pointer" onClick={()=> setStatIndex(i=> i+1)}>
