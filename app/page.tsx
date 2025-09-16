@@ -518,6 +518,15 @@ export default function Page() {
               const missing = state.players.filter(p => r.bids[p.id] === undefined);
               const sumEntered = bidsEntered.reduce((acc, p) => acc + (r.bids[p.id] ?? 0), 0);
               const forbidden = r.cards - sumEntered;
+              const allBidsEntered = state.players.every(p => r.bids[p.id] !== undefined);
+              const totalBids = state.players.reduce((acc, p) => acc + (r.bids[p.id] ?? 0), 0);
+              const bidsMatchCards = allBidsEntered && totalBids === r.cards;
+              const canLock = allBidsEntered && !bidsMatchCards;
+              const lockTitle = !allBidsEntered
+                ? "Enter bids for every player before locking the round."
+                : bidsMatchCards
+                  ? "Adjust the final bid so totals don't equal the cards dealt."
+                  : "Lock the round to record scores.";
               return (
                 <tr key={r.id}>
                   <td className="p-2">
@@ -533,7 +542,8 @@ export default function Page() {
                     const pts = computePointsFromOk(bid, ok);
                     const isLastToBid = !r.locked && missing.length === 1 && missing[0].id === p.id;
                     const canBidAnything = isLastToBid && forbidden < 0;
-                    const showWarn = isLastToBid && forbidden >= 0 && bid === forbidden;
+                    const showWarnMessage = isLastToBid && forbidden >= 0;
+                    const highlightIllegal = showWarnMessage && bid === forbidden;
                     return (
                       <td key={p.id} className="p-2 align-top">
                         {!r.locked ? (
@@ -542,14 +552,34 @@ export default function Page() {
                               type="number" min={0}
                               value={bid ?? ""}
                               onChange={(e) => {
-                                const v = e.target.value === "" ? undefined : Math.max(0, parseInt(e.target.value));
+                                const raw = e.target.value;
+                                if (raw === "") {
+                                  setBid(r.id, p.id, undefined);
+                                  return;
+                                }
+                                const parsed = Number.parseInt(raw, 10);
+                                if (Number.isNaN(parsed)) return;
+                                const v = Math.max(0, parsed);
+                                const otherSum = state.players.reduce((acc, other) => {
+                                  if (other.id === p.id) return acc;
+                                  return acc + (r.bids[other.id] ?? 0);
+                                }, 0);
+                                const othersMissing = state.players.reduce((count, other) => {
+                                  if (other.id === p.id) return count;
+                                  return count + (r.bids[other.id] === undefined ? 1 : 0);
+                                }, 0);
+                                const completesBidding = othersMissing === 0;
+                                if (completesBidding && otherSum + v === r.cards) {
+                                  alert("Last bidder can't make total bids equal the cards dealt. Pick another number.");
+                                  return;
+                                }
                                 setBid(r.id, p.id, v);
                               }}
-                              className={"input-base table-input " + (showWarn ? "border-red-500 focus:ring-red-500/30" : "")}
+                              className={"input-base table-input " + (highlightIllegal ? "border-red-500 focus:ring-red-500/30" : "")}
                             />
                             {isLastToBid && (
                               <div
-                                className={`help ${showWarn ? "text-red-600 dark:text-rose-400" : ""} ${canBidAnything ? "text-emerald-600 dark:text-emerald-400" : ""}`}
+                                className={`help ${showWarnMessage ? "text-red-600 dark:text-rose-400" : ""} ${canBidAnything ? "text-emerald-600 dark:text-emerald-400" : ""}`}
                               >
                                 {canBidAnything ? "Can bid anything" : <>Can&apos;t bid <b>{forbidden}</b></>}
                               </div>
@@ -573,7 +603,14 @@ export default function Page() {
                   })}
                   <td className="p-2">
                     {!r.locked ? (
-                      <button onClick={() => lockRow(r.id, true)} className="button">Lock</button>
+                      <button
+                        onClick={() => lockRow(r.id, true)}
+                        className={`button${!canLock ? " opacity-60 cursor-not-allowed" : ""}`}
+                        disabled={!canLock}
+                        title={lockTitle}
+                      >
+                        Lock
+                      </button>
                     ) : (
                       <button onClick={() => lockRow(r.id, false)} className="button">Unlock</button>
                     )}

@@ -2,7 +2,7 @@
 
 Mobile-friendly score keeping app for **Judgement / Oh Hell**.
 - Enter players, per-round bids & tricks, choose the trump suit each round
-- Exact-bid scoring (two modes): **Bid = points** or **10 + bid**
+- Exact-bid scoring (**10 + bid** for exact, 0 otherwise)
 - Leaderboard & per-round progress sparkline
 - Local-first persistence (browser `localStorage`); **Export/Import JSON** for portability
 
@@ -35,8 +35,7 @@ Open http://localhost:3000
 ## Notes
 
 - No backend required. To make it multi-device in real time, add Supabase or Vercel Postgres later.
-- Scoring modes:
-  - **Bid = points (exact), else 0** (default)
-  - **10 + bid (exact), else 0** (toggle in Settings)
+- Scoring:
+  - **10 + bid (exact), else 0** (standard Judgement scoring)
 - Data model lives in `lib/storage.ts`.
 - All UI is in a single page (`app/page.tsx`) for simplicity.
