@@ -480,10 +480,7 @@ export default function Page() {
 
       {/* Controls + Stats */}
       <section className="space-y-2">
-        <p className="text-base font-semibold text-gray-700 dark:text-gray-200">
-          Pick your adventure: choose a Max → 1 countdown, a 1 → Max climb, tack on extra rounds once the table hits
-          a single card, or loop back down with a Max-1 finish.
-        </p>
+        <h2 className="text-base font-semibold text-gray-700 dark:text-gray-200">Round plan presets</h2>
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => buildPlan(true)}
@@ -614,7 +611,7 @@ export default function Page() {
                                 className={`help ${(Boolean(warningForPlayer) || showWarnMessage) ? "text-red-600 dark:text-rose-400" : ""} ${canBidAnything ? "text-emerald-600 dark:text-emerald-400" : ""}`}
                               >
                                 {warningForPlayer
-                                  ? <>Can&apos;t bid <b>{warningForPlayer.forbidden}</b> — totals would equal the cards dealt. Pick another number.</>
+                                  ? <>Can&apos;t bid <b>{warningForPlayer.forbidden}</b></>
                                   : canBidAnything
                                     ? "Can bid anything"
                                     : <>Can&apos;t bid <b>{forbidden}</b></>}
