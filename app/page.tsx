@@ -37,15 +37,12 @@ export default function Page() {
   const [playerName, setPlayerName] = useState("");
   const { theme, toggle } = useTheme();
   const hasSupabase = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
-  const tableCardRef = useRef<HTMLDivElement | null>(null);
-  const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const howToRef = useRef<HTMLElement | null>(null);
 
   // Live sync controls
   const [live, setLive] = useState(false);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const selfUpdate = useRef(false); // prevent loops
-  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => { save(state); }, [state]);
 
@@ -133,6 +130,36 @@ export default function Page() {
     setState(s => ({ ...s, rounds }));
   }
 
+  function appendMaxMinusOne() {
+    const max = maxCardsForPlayers(state.players.length || 4);
+    if (max <= 1) return;
+    if (state.rounds.length === 0) return buildPlan(true);
+    const endsAtMax = state.rounds[state.rounds.length - 1]?.cards === max;
+    if (!endsAtMax) {
+      alert("Reach the max-hand round before adding a Max-1 countdown.");
+      return;
+    }
+    const ok = window.confirm(
+      "Append a fresh countdown from Max-1 back to one card? Everyone ready for the extended tour?"
+    );
+    if (!ok) return;
+    const startIndex = state.rounds.length;
+    const rounds = [...state.rounds];
+    for (let i = 0; i < max - 1; i++) {
+      const cards = max - 1 - i;
+      rounds.push({
+        id: crypto.randomUUID(),
+        index: startIndex + i + 1,
+        suit: SUITS[(startIndex + i) % 4],
+        cards,
+        locked: false,
+        bids: {},
+        ok: {},
+      });
+    }
+    setState(s => ({ ...s, rounds }));
+  }
+
   function setBid(rid: string, pid: string, val: number | undefined) {
     setState(s => ({
       ...s,
@@ -162,6 +189,11 @@ export default function Page() {
     const scored = roundsFullyScored(state);
     stats.push(`Rounds scored: ${scored}/${state.rounds.length}.`);
 
+    const lockedNeedingScores = state.rounds.filter(r => r.locked && state.players.some(p => r.ok[p.id] === undefined)).length;
+    if (lockedNeedingScores > 0) {
+      stats.push(`${lockedNeedingScores} locked ${lockedNeedingScores === 1 ? "round still needs" : "rounds still need"} scoring.`);
+    }
+
     const noWins = state.players.filter(p => roundsWon(state, p.id) === 0).map(p => p.name);
     if (noWins.length) stats.push(`${noWins.join(", ")} ${noWins.length === 1 ? "has" : "have"} not won a round yet.`);
 
@@ -175,9 +207,55 @@ export default function Page() {
     if (playersSorted.length >= 2) {
       const a = playersSorted[0], b = playersSorted[1];
       const diff = Math.abs((totals[a.id] ?? 0) - (totals[b.id] ?? 0));
-      stats.push(`${a.name} leads ${b.name} by ${diff} pts.`);
+      if (diff === 0) {
+        stats.push(`${a.name} and ${b.name} are tied for the lead.`);
+      } else {
+        stats.push(`${a.name} leads ${b.name} by ${diff} pts.`);
+      }
     } else if (playersSorted.length === 1) {
       stats.push(`${playersSorted[0].name} is in the lead.`);
+    }
+
+    if (playersSorted.length >= 3) {
+      const first = playersSorted[0];
+      const last = playersSorted[playersSorted.length - 1];
+      const spread = Math.abs((totals[first.id] ?? 0) - (totals[last.id] ?? 0));
+      if (spread > 0) {
+        stats.push(`${spread} pts separate first and last place.`);
+      }
+    }
+
+    const playerTallies = state.players.map(p => {
+      let attempts = 0;
+      let hits = 0;
+      let bestRound = 0;
+      for (const r of state.rounds) {
+        const ok = r.ok[p.id];
+        if (ok !== undefined) {
+          attempts++;
+          if (ok) hits++;
+        }
+        const pts = computePointsFromOk(r.bids[p.id], ok);
+        if (pts > bestRound) bestRound = pts;
+      }
+      const accuracy = attempts > 0 ? hits / attempts : 0;
+      return { name: p.name, attempts, hits, bestRound, accuracy };
+    });
+
+    const eligibleAccuracy = playerTallies.filter(p => p.attempts > 0);
+    if (eligibleAccuracy.length > 0) {
+      const bestAccuracy = Math.max(...eligibleAccuracy.map(p => p.accuracy));
+      if (bestAccuracy > 0) {
+        const who = eligibleAccuracy.filter(p => p.accuracy === bestAccuracy).map(p => p.name).join(", ");
+        const percent = Math.round(bestAccuracy * 100);
+        stats.push(`${who} ${who.includes(",") ? "are" : "is"} hitting ${percent}% of scored rounds.`);
+      }
+    }
+
+    const bestRoundScore = Math.max(...playerTallies.map(p => p.bestRound));
+    if (bestRoundScore > 0) {
+      const who = playerTallies.filter(p => p.bestRound === bestRoundScore).map(p => p.name).join(", ");
+      stats.push(`Highest single-round haul: ${who} with ${bestRoundScore} pts.`);
     }
 
     const mostWins = Math.max(...state.players.map(p => roundsWon(state, p.id)));
@@ -198,7 +276,6 @@ export default function Page() {
     const timer = setInterval(() => { setStatIndex((i) => i + 1); }, 5000);
     return () => clearInterval(timer);
   }, [stats.length, statsKey]);
-  const hasLockedRounds = useMemo(() => state.rounds.some(r => r.locked), [state.rounds]);
 
   // Cloud save/load (manual)
   async function saveCloud() {
@@ -292,97 +369,6 @@ export default function Page() {
     howToRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  async function exportTableImage() {
-    if (!tableCardRef.current) return;
-    setIsExporting(true);
-    try {
-      const card = tableCardRef.current;
-      const scrollArea = tableScrollRef.current;
-      const share = card.querySelector("[data-share-controls]") as HTMLElement | null;
-      const width = Math.ceil((scrollArea?.scrollWidth ?? card.scrollWidth) || card.clientWidth);
-      const baseHeight = scrollArea?.scrollHeight ?? (card.scrollHeight - (share?.offsetHeight ?? 0));
-      const height = Math.ceil(baseHeight);
-
-      const clone = card.cloneNode(true) as HTMLElement;
-      const cloneShare = clone.querySelector("[data-share-controls]");
-      if (cloneShare) {
-        cloneShare.parentElement?.removeChild(cloneShare);
-      }
-      const cloneScroll = clone.querySelector("[data-export-scroll]") as HTMLElement | null;
-      if (cloneScroll) {
-        cloneScroll.style.overflow = "visible";
-        cloneScroll.style.maxHeight = "none";
-        cloneScroll.style.maxWidth = "none";
-      }
-
-      clone.style.width = `${width}px`;
-      clone.style.height = `${height}px`;
-      const background = theme === "dark" ? "#09090b" : "#ffffff";
-      clone.style.background = background;
-      clone.style.color = theme === "dark" ? "#f9fafb" : "#111827";
-      clone.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
-
-      const cssText = (() => {
-        let css = "";
-        for (const sheet of Array.from(document.styleSheets)) {
-          try {
-            const rules = sheet.cssRules;
-            if (!rules) continue;
-            css += Array.from(rules).map(rule => rule.cssText).join("");
-          } catch (error) {
-            // Ignore inaccessible stylesheets (e.g., cross-origin)
-          }
-        }
-        return css;
-      })();
-
-      const htmlClass = document.documentElement.className;
-      const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-  <foreignObject width="100%" height="100%">
-    <div xmlns="http://www.w3.org/1999/xhtml" class="${htmlClass}" style="width:${width}px;height:${height}px;background:${background};">
-      <style>${cssText}</style>
-      ${clone.outerHTML}
-    </div>
-  </foreignObject>
-</svg>`;
-
-      const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
-      const svgUrl = URL.createObjectURL(blob);
-      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => {
-          URL.revokeObjectURL(svgUrl);
-          resolve(image);
-        };
-        image.onerror = () => {
-          URL.revokeObjectURL(svgUrl);
-          reject(new Error("Could not load image"));
-        };
-        image.src = svgUrl;
-      });
-
-      const scale = Math.min(2, window.devicePixelRatio || 1);
-      const canvas = document.createElement("canvas");
-      canvas.width = width * scale;
-      canvas.height = height * scale;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Canvas not supported");
-      ctx.scale(scale, scale);
-      ctx.drawImage(img, 0, 0);
-
-      const link = document.createElement("a");
-      link.href = canvas.toDataURL("image/png");
-      link.download = `judgement-score-${new Date().toISOString().slice(0, 10)}.png`;
-      link.click();
-    } catch (err) {
-      console.error(err);
-      alert("Sorry, something went wrong while creating the image.");
-    } finally {
-      setIsExporting(false);
-    }
-  }
-
   // Initialize default plan
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (state.rounds.length === 0) buildPlan(true); }, []);
@@ -470,9 +456,9 @@ export default function Page() {
 
       {/* Controls + Stats */}
       <section className="space-y-2">
-        <p className="text-sm text-gray-600 dark:text-gray-300">
-          Pick your adventure: choose a Max → 1 countdown, a 1 → Max climb, or tack on extra rounds once the table hits
-          a single card.
+        <p className="text-base font-semibold text-gray-700 dark:text-gray-200">
+          Pick your adventure: choose a Max → 1 countdown, a 1 → Max climb, tack on extra rounds once the table hits
+          a single card, or loop back down with a Max-1 finish.
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -496,6 +482,13 @@ export default function Page() {
           >
             Append Ascending Rounds (1 → Max)
           </button>
+          <button
+            onClick={() => appendMaxMinusOne()}
+            className="button"
+            title="After hitting the max-hand round, add a countdown that steps back down to a single card without repeating the peak."
+          >
+            Append Descending Rounds (Max-1 → 1)
+          </button>
         </div>
       </section>
 
@@ -506,12 +499,8 @@ export default function Page() {
       </section>
 
       {/* Single Table */}
-      <section className="table-card" ref={tableCardRef}>
-        <div
-          ref={tableScrollRef}
-          className="overflow-x-auto p-4"
-          data-export-scroll
-        >
+      <section className="table-card">
+        <div className="overflow-x-auto p-4">
           <table className="min-w-full text-xs sm:text-sm table-fixed">
           <thead>
             <tr className="text-left">
@@ -601,21 +590,6 @@ export default function Page() {
           </tbody>
         </table>
         </div>
-        {hasLockedRounds && (
-          <div
-            className="px-4 py-3 border-t border-gray-200 dark:border-neutral-700 space-y-2 text-sm"
-            data-share-controls
-          >
-            <button
-              onClick={exportTableImage}
-              className={`button primary ${isExporting ? "opacity-75 pointer-events-none" : ""}`}
-              title="Download the table as an image you can share with friends."
-            >
-              {isExporting ? "Preparing image…" : "Export table as image"}
-            </button>
-            <p className="help">Lock a round to unlock sharing and download the full scoreboard as a PNG.</p>
-          </div>
-        )}
       </section>
 
       {/* How to play */}
@@ -623,13 +597,13 @@ export default function Page() {
         <h2 className="text-lg font-semibold mt-6">How to play Judgement (Oh Hell)</h2>
         <ol className="list-decimal pl-5 space-y-1 text-sm">
           <li><b>Set up players:</b> Add everyone&rsquo;s name above. Remove someone anytime with the ✕ pill button.</li>
-          <li><b>Plan your rounds:</b> Use <b>Create Descending Plan</b> or <b>Create Ascending Plan</b> to auto-fill the deal pattern. Reach the single-card round? <b>Append Ascending Rounds</b> grows the game back to Max.</li>
+          <li><b>Plan your rounds:</b> Use <b>Create Descending Plan</b> or <b>Create Ascending Plan</b> to auto-fill the deal pattern. Reach the single-card round? <b>Append Ascending Rounds</b> grows the game back to Max, and <b>Append Descending Rounds</b> rides the slope back down from Max-1.</li>
           <li><b>Deal & trump:</b> Deal the number of cards shown in the <i>Cards</i> column. Trump rotates each round: <b>Spades (♠) → Hearts (♥) → Clubs (♣) → Diamonds (♦)</b>.</li>
           <li><b>Bid smart:</b> Enter each player&rsquo;s bid before the round. The last bidder can&rsquo;t make total bids equal the cards in the round—the cell warns you.</li>
           <li><b>Play the hand:</b> Follow suit if possible; otherwise play any card. The highest card of the led suit wins unless a trump is played—in that case the highest trump wins.</li>
           <li><b>Lock & score:</b> Click <b>Lock</b> when all bids are in. After the round, choose ✓ or ✗ to mark whether a player hit their bid. Scores (10 + bid for exact, 0 otherwise) tally automatically.</li>
           <li><b>Track progress:</b> Live stats above the table highlight streaks, leaders, and which rounds still need attention.</li>
-          <li><b>Share with friends:</b> Use <b>Share Link</b> for live collaboration or tap <b>Export table as image</b> (unlocked whenever a round is completed) to download the scoreboard.</li>
+          <li><b>Share with friends:</b> Use <b>Share Link</b> for live collaboration and keep everyone in sync as scores update.</li>
         </ol>
       </section>
     </main>
