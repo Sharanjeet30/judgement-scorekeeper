@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import {
   GameState, Player, Round, newGame, load, save, clear,
   generatePlanRows, totalsByPlayer, computePointsFromOk, SUITS, maxCardsForPlayers,
@@ -39,7 +40,7 @@ export default function Page() {
 
   // Live sync controls
   const [live, setLive] = useState(false);
-  const channelRef = useRef<ReturnType<NonNullable<ReturnType<typeof getSupabase>>>["channel"] | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const selfUpdate = useRef(false); // prevent loops
 
   useEffect(() => { save(state); }, [state]);
