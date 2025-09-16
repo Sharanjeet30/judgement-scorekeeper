@@ -7,7 +7,7 @@ html, body { height: 100%; }
 body { @apply bg-white text-gray-900 dark:bg-neutral-950 dark:text-gray-100; }
 
 /* Components */
-.header { @apply flex items-center justify-between gap-3; }
+.header { @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between; }
 .brand  { @apply text-3xl font-extrabold tracking-tight; }
 
 .button {
@@ -21,15 +21,15 @@ body { @apply bg-white text-gray-900 dark:bg-neutral-950 dark:text-gray-100; }
 .pill { @apply px-3 py-1 rounded-full border bg-white border-gray-200 text-gray-900 dark:bg-neutral-900 dark:border-neutral-700 dark:text-gray-100; }
 
 /* Inputs */
-.input-group { @apply flex items-stretch gap-2 w-full; }
+.input-group { @apply flex flex-col gap-2 w-full sm:flex-row sm:items-stretch; }
 .input-base { @apply border rounded-xl px-3 py-2 w-full bg-white text-gray-900 placeholder:text-gray-400 border-gray-200 focus:outline-none focus:ring-2 focus:ring-black/20 dark:bg-neutral-900 dark:text-gray-100 dark:placeholder:text-gray-400 dark:border-neutral-700 dark:focus:ring-white/20; }
-.input-add  { @apply primary min-w-[90px] rounded-xl; }
+.input-add  { @apply primary rounded-xl w-full sm:w-auto sm:min-w-[90px]; }
 .table-input { @apply w-24 px-2 py-2 text-center leading-tight; }
 
 /* Cards & table */
 .card       { @apply border rounded-2xl shadow-sm bg-white border-gray-200 dark:bg-neutral-900 dark:border-neutral-700; }
 .statcard   { @apply card p-3 text-sm; }
-.table-card { @apply card overflow-hidden; }
+.table-card { @apply card; }
 thead th    { @apply bg-gray-50 text-gray-700 dark:bg-neutral-800 dark:text-gray-100; }
 tbody td    { @apply text-gray-900 dark:text-gray-100; }
 tbody tr:nth-child(odd) td { @apply bg-white dark:bg-neutral-900; }
