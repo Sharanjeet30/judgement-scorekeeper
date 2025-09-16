@@ -35,6 +35,9 @@ const suitMeta: Record<string, { sym: string; color: string }> = {
 export default function Page() {
   const [state, setState] = useState<GameState>(() => load() ?? newGame());
   const [playerName, setPlayerName] = useState("");
+  const [bidWarning, setBidWarning] = useState<
+    { roundId: string; playerId: string; forbidden: number }
+  | null>(null);
   const { theme, toggle } = useTheme();
   const hasSupabase = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
   const howToRef = useRef<HTMLElement | null>(null);
@@ -45,6 +48,27 @@ export default function Page() {
   const selfUpdate = useRef(false); // prevent loops
 
   useEffect(() => { save(state); }, [state]);
+
+  useEffect(() => {
+    if (!bidWarning) return;
+    const round = state.rounds.find(r => r.id === bidWarning.roundId);
+    if (!round) {
+      setBidWarning(null);
+      return;
+    }
+    const bid = round.bids[bidWarning.playerId];
+    if (bid === undefined) {
+      setBidWarning(null);
+      return;
+    }
+    const otherSum = state.players.reduce((acc, player) => {
+      if (player.id === bidWarning.playerId) return acc;
+      return acc + (round.bids[player.id] ?? 0);
+    }, 0);
+    if (round.locked || otherSum + bid !== round.cards) {
+      setBidWarning(null);
+    }
+  }, [bidWarning, state.players, state.rounds]);
 
   // Load from URL ?id=...
   useEffect(() => {
@@ -542,8 +566,9 @@ export default function Page() {
                     const pts = computePointsFromOk(bid, ok);
                     const isLastToBid = !r.locked && missing.length === 1 && missing[0].id === p.id;
                     const canBidAnything = isLastToBid && forbidden < 0;
-                    const showWarnMessage = isLastToBid && forbidden >= 0;
-                    const highlightIllegal = showWarnMessage && bid === forbidden;
+                    const warningForPlayer = bidWarning && bidWarning.roundId === r.id && bidWarning.playerId === p.id ? bidWarning : null;
+                    const showWarnMessage = isLastToBid && forbidden >= 0 && !warningForPlayer;
+                    const highlightIllegal = Boolean(warningForPlayer) || (showWarnMessage && bid === forbidden);
                     return (
                       <td key={p.id} className="p-2 align-top">
                         {!r.locked ? (
@@ -554,6 +579,7 @@ export default function Page() {
                               onChange={(e) => {
                                 const raw = e.target.value;
                                 if (raw === "") {
+                                  setBidWarning(prev => (prev && prev.roundId === r.id && prev.playerId === p.id ? null : prev));
                                   setBid(r.id, p.id, undefined);
                                   return;
                                 }
@@ -569,19 +595,29 @@ export default function Page() {
                                   return count + (r.bids[other.id] === undefined ? 1 : 0);
                                 }, 0);
                                 const completesBidding = othersMissing === 0;
-                                if (completesBidding && otherSum + v === r.cards) {
-                                  alert("Last bidder can't make total bids equal the cards dealt. Pick another number.");
-                                  return;
-                                }
+                                const isIllegal = completesBidding && otherSum + v === r.cards;
+                                setBidWarning(prev => {
+                                  if (isIllegal) {
+                                    return { roundId: r.id, playerId: p.id, forbidden: v };
+                                  }
+                                  if (prev && prev.roundId === r.id && prev.playerId === p.id) {
+                                    return null;
+                                  }
+                                  return prev;
+                                });
                                 setBid(r.id, p.id, v);
                               }}
                               className={"input-base table-input " + (highlightIllegal ? "border-red-500 focus:ring-red-500/30" : "")}
                             />
-                            {isLastToBid && (
+                            {(isLastToBid || warningForPlayer) && (
                               <div
-                                className={`help ${showWarnMessage ? "text-red-600 dark:text-rose-400" : ""} ${canBidAnything ? "text-emerald-600 dark:text-emerald-400" : ""}`}
+                                className={`help ${(Boolean(warningForPlayer) || showWarnMessage) ? "text-red-600 dark:text-rose-400" : ""} ${canBidAnything ? "text-emerald-600 dark:text-emerald-400" : ""}`}
                               >
-                                {canBidAnything ? "Can bid anything" : <>Can&apos;t bid <b>{forbidden}</b></>}
+                                {warningForPlayer
+                                  ? <>Can&apos;t bid <b>{warningForPlayer.forbidden}</b> — totals would equal the cards dealt. Pick another number.</>
+                                  : canBidAnything
+                                    ? "Can bid anything"
+                                    : <>Can&apos;t bid <b>{forbidden}</b></>}
                               </div>
                             )}
                           </div>
