@@ -247,14 +247,44 @@ export default function Page() {
             {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
           </button>
           {hasSupabase && (<>
-            <button onClick={saveCloud} className="button">Save Cloud</button>
-            <button onClick={loadCloud} className="button">Load Cloud</button>
-            <button onClick={() => setLive(l => !l)} className={"button " + (live ? "primary" : "")}>
+            <button
+              onClick={saveCloud}
+              className="button"
+              title="Save the current game state to Supabase using this game's ID."
+            >
+              Save Cloud
+            </button>
+            <button
+              onClick={loadCloud}
+              className="button"
+              title="Load a saved game from Supabase by entering its ID."
+            >
+              Load Cloud
+            </button>
+            <button
+              onClick={() => setLive(l => !l)}
+              className={"button " + (live ? "primary" : "")}
+              title={live
+                ? "Live sync is on. Click to stop automatically sharing updates."
+                : "Live sync is off. Click to automatically share updates via Supabase."}
+            >
               {live ? "Live: ON" : "Live: OFF"}
             </button>
-            <button onClick={copyShareLink} className="button">Share Link</button>
+            <button
+              onClick={copyShareLink}
+              className="button"
+              title="Copy a shareable link that opens this scoreboard."
+            >
+              Share Link
+            </button>
           </>)}
-          <button onClick={() => { clear(); setState(newGame()); }} className="button">New Game</button>
+          <button
+            onClick={() => { clear(); setState(newGame()); }}
+            className="button"
+            title="Clear all players and rounds to start a fresh game."
+          >
+            New Game
+          </button>
         </div>
       </header>
 
@@ -284,9 +314,27 @@ export default function Page() {
 
       {/* Controls + Stats */}
       <section className="flex flex-wrap items-center gap-3">
-        <button onClick={() => buildPlan(true)} className="button">Plan Max → 1</button>
-        <button onClick={() => buildPlan(false)} className="button">Plan 1 → Max</button>
-        <button onClick={() => appendReverse()} className="button">Append Reverse (1 → Max)</button>
+        <button
+          onClick={() => buildPlan(true)}
+          className="button"
+          title="Create rounds that count down from the maximum hand size to one card."
+        >
+          Create Descending Plan (Max → 1)
+        </button>
+        <button
+          onClick={() => buildPlan(false)}
+          className="button"
+          title="Create rounds that build up from one card to the maximum hand size."
+        >
+          Create Ascending Plan (1 → Max)
+        </button>
+        <button
+          onClick={() => appendReverse()}
+          className="button"
+          title="After reaching one card, add another set of rounds that climb back to the maximum."
+        >
+          Append Ascending Rounds (1 → Max)
+        </button>
       </section>
 
       <section className="statcard cursor-pointer" onClick={()=> setStatIndex(i=> i+1)}>
@@ -340,7 +388,7 @@ export default function Page() {
                                 const v = e.target.value === "" ? undefined : Math.max(0, parseInt(e.target.value));
                                 setBid(r.id, p.id, v);
                               }}
-                              className={"w-20 input-base px-2 py-1 " + (showWarn ? "border-red-500 focus:ring-red-500/30" : "")}
+                              className={"input-base table-input " + (showWarn ? "border-red-500 focus:ring-red-500/30" : "")}
                             />
                             {isLastToBid && (
                               <div className={"help " + (showWarn ? "text-red-600" : "")}>
@@ -394,7 +442,7 @@ export default function Page() {
           <li><b>Winning a trick:</b> If no trump is played, the highest card of the led suit wins. If any trump is played, the highest trump wins. Only a higher trump can beat a trump.</li>
           <li><b>Scoring:</b> Exact bid scores <b>10 + bid</b> (0-call exact = <b>10</b>). Missed bids always score <span className="line-through">0</span>.</li>
           <li><b>Recording results:</b> After the round is locked, each cell shows the bid and ✓/✗. Choose one; the buttons disappear and only points remain. Unlock the row to change.</li>
-          <li><b>Continue:</b> Use <b>Plan</b> buttons to set rounds (Max→1 or 1→Max). After reaching 1, <b>Append Reverse</b> continues 1→Max on the same table.</li>
+          <li><b>Continue:</b> Use <b>Create Descending Plan</b> or <b>Create Ascending Plan</b> to set rounds. After reaching 1, <b>Append Ascending Rounds</b> continues 1→Max on the same table.</li>
         </ol>
       </section>
     </main>
