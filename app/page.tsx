@@ -37,11 +37,15 @@ export default function Page() {
   const [playerName, setPlayerName] = useState("");
   const { theme, toggle } = useTheme();
   const hasSupabase = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  const tableCardRef = useRef<HTMLDivElement | null>(null);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const howToRef = useRef<HTMLElement | null>(null);
 
   // Live sync controls
   const [live, setLive] = useState(false);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const selfUpdate = useRef(false); // prevent loops
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => { save(state); }, [state]);
 
@@ -174,6 +178,7 @@ export default function Page() {
   const [statIndex, setStatIndex] = useState(0);
   const statMsg = stats.length ? stats[statIndex % stats.length] : "Add players and rounds to see live stats.";
   useEffect(() => { setStatIndex(0); }, [state.players.length, state.rounds.length]);
+  const hasLockedRounds = useMemo(() => state.rounds.some(r => r.locked), [state.rounds]);
 
   // Cloud save/load (manual)
   async function saveCloud() {
@@ -235,14 +240,103 @@ export default function Page() {
     alert("Link copied! Share it with players to view/edit live.");
   }
 
+  function scrollToHowTo() {
+    howToRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function exportTableImage() {
+    if (!tableCardRef.current) return;
+    setIsExporting(true);
+    try {
+      const card = tableCardRef.current;
+      const scrollArea = tableScrollRef.current;
+      const share = card.querySelector("[data-share-controls]") as HTMLElement | null;
+      const width = Math.ceil((scrollArea?.scrollWidth ?? card.scrollWidth) || card.clientWidth);
+      const baseHeight = scrollArea?.scrollHeight ?? (card.scrollHeight - (share?.offsetHeight ?? 0));
+      const height = Math.ceil(baseHeight);
+
+      const clone = card.cloneNode(true) as HTMLElement;
+      const cloneShare = clone.querySelector("[data-share-controls]");
+      if (cloneShare) {
+        cloneShare.parentElement?.removeChild(cloneShare);
+      }
+      const cloneScroll = clone.querySelector("[data-export-scroll]") as HTMLElement | null;
+      if (cloneScroll) {
+        cloneScroll.style.overflow = "visible";
+        cloneScroll.style.maxHeight = "none";
+        cloneScroll.style.maxWidth = "none";
+      }
+
+      clone.style.width = `${width}px`;
+      clone.style.height = `${height}px`;
+      const background = theme === "dark" ? "#09090b" : "#ffffff";
+      clone.style.background = background;
+      clone.style.color = theme === "dark" ? "#f9fafb" : "#111827";
+      clone.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+
+      const cssText = (() => {
+        let css = "";
+        for (const sheet of Array.from(document.styleSheets)) {
+          try {
+            const rules = sheet.cssRules;
+            if (!rules) continue;
+            css += Array.from(rules).map(rule => rule.cssText).join("");
+          } catch (error) {
+            // Ignore inaccessible stylesheets (e.g., cross-origin)
+          }
+        }
+        return css;
+      })();
+
+      const htmlClass = document.documentElement.className;
+      const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+  <foreignObject width="100%" height="100%">
+    <div xmlns="http://www.w3.org/1999/xhtml" class="${htmlClass}" style="width:${width}px;height:${height}px;background:${background};">
+      <style>${cssText}</style>
+      ${clone.outerHTML}
+    </div>
+  </foreignObject>
+</svg>`;
+
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("Could not load image"));
+        image.src = svgUrl;
+      });
+
+      const scale = Math.min(2, window.devicePixelRatio || 1);
+      const canvas = document.createElement("canvas");
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas not supported");
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0);
+
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = `judgement-score-${new Date().toISOString().slice(0, 10)}.png`;
+      link.click();
+    } catch (err) {
+      console.error(err);
+      alert("Sorry, something went wrong while creating the image.");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   // Initialize default plan
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (state.rounds.length === 0) buildPlan(true); }, []);
 
   return (
     <main className="max-w-6xl mx-auto p-4 space-y-6">
       <header className="header">
         <h1 className="brand">Judgement Scorekeeper</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={toggle} className="button" title="Toggle theme">
             {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
           </button>
@@ -284,6 +378,13 @@ export default function Page() {
             title="Clear all players and rounds to start a fresh game."
           >
             New Game
+          </button>
+          <button
+            onClick={scrollToHowTo}
+            className="button"
+            title="Jump to the How to Play guide at the bottom of the page."
+          >
+            How to Play ↓
           </button>
         </div>
       </header>
@@ -344,12 +445,17 @@ export default function Page() {
       </section>
 
       {/* Single Table */}
-      <section className="overflow-auto table-card">
-        <table className="min-w-full text-sm table-fixed">
+      <section className="table-card" ref={tableCardRef}>
+        <div
+          ref={tableScrollRef}
+          className="overflow-x-auto p-4"
+          data-export-scroll
+        >
+          <table className="min-w-full text-xs sm:text-sm table-fixed">
           <thead>
             <tr className="text-left">
-              <th className="p-2 w-36">Suit</th>
-              <th className="p-2 w-20">Cards</th>
+              <th className="p-2 w-24 sm:w-36">Suit</th>
+              <th className="p-2 w-16 sm:w-20">Cards</th>
               {state.players.map(p => (
                 <th key={p.id} className="p-2">{p.name}</th>
               ))}
@@ -391,8 +497,8 @@ export default function Page() {
                               className={"input-base table-input " + (showWarn ? "border-red-500 focus:ring-red-500/30" : "")}
                             />
                             {isLastToBid && (
-                              <div className={"help " + (showWarn ? "text-red-600" : "")}>
-                                Can't bid <b>{forbidden}</b>
+                              <div className={"help " + (showWarn ? "text-red-600" : "")}> 
+                                Can&apos;t bid <b>{forbidden}</b>
                               </div>
                             )}
                           </div>
@@ -430,19 +536,36 @@ export default function Page() {
             </tr>
           </tbody>
         </table>
+        </div>
+        {hasLockedRounds && (
+          <div
+            className="px-4 py-3 border-t border-gray-200 dark:border-neutral-700 space-y-2 text-sm"
+            data-share-controls
+          >
+            <button
+              onClick={exportTableImage}
+              className={`button primary ${isExporting ? "opacity-75 pointer-events-none" : ""}`}
+              title="Download the table as an image you can share with friends."
+            >
+              {isExporting ? "Preparing image…" : "Export table as image"}
+            </button>
+            <p className="help">Lock a round to unlock sharing and download the full scoreboard as a PNG.</p>
+          </div>
+        )}
       </section>
 
       {/* How to play */}
-      <section className="prose max-w-none">
+      <section ref={howToRef} id="how-to-play" className="prose max-w-none">
         <h2 className="text-lg font-semibold mt-6">How to play Judgement (Oh Hell)</h2>
         <ol className="list-decimal pl-5 space-y-1 text-sm">
-          <li><b>Deal & trump:</b> Deal N cards to each player (N auto-set by players). Trump rotates: <b>Spades (♠) → Hearts (♥) → Clubs (♣) → Diamonds (♦)</b>.</li>
-          <li><b>Bidding:</b> Before play, each player bids how many tricks they expect to win. Enter bids, then click <b>Lock</b>. <i>Last bidder rule:</i> when only one player remains to bid, they cannot bid the number that makes <i>total bids = cards</i> for that round.</li>
-          <li><b>Playing a trick:</b> Leader plays any card. Others must follow the suit led if they can. If you cannot follow suit, you may play any card — including a trump.</li>
-          <li><b>Winning a trick:</b> If no trump is played, the highest card of the led suit wins. If any trump is played, the highest trump wins. Only a higher trump can beat a trump.</li>
-          <li><b>Scoring:</b> Exact bid scores <b>10 + bid</b> (0-call exact = <b>10</b>). Missed bids always score <span className="line-through">0</span>.</li>
-          <li><b>Recording results:</b> After the round is locked, each cell shows the bid and ✓/✗. Choose one; the buttons disappear and only points remain. Unlock the row to change.</li>
-          <li><b>Continue:</b> Use <b>Create Descending Plan</b> or <b>Create Ascending Plan</b> to set rounds. After reaching 1, <b>Append Ascending Rounds</b> continues 1→Max on the same table.</li>
+          <li><b>Set up players:</b> Add everyone&rsquo;s name above. Remove someone anytime with the ✕ pill button.</li>
+          <li><b>Plan your rounds:</b> Use <b>Create Descending Plan</b> or <b>Create Ascending Plan</b> to auto-fill the deal pattern. Reach the single-card round? <b>Append Ascending Rounds</b> grows the game back to Max.</li>
+          <li><b>Deal & trump:</b> Deal the number of cards shown in the <i>Cards</i> column. Trump rotates each round: <b>Spades (♠) → Hearts (♥) → Clubs (♣) → Diamonds (♦)</b>.</li>
+          <li><b>Bid smart:</b> Enter each player&rsquo;s bid before the round. The last bidder can&rsquo;t make total bids equal the cards in the round—the cell warns you.</li>
+          <li><b>Play the hand:</b> Follow suit if possible; otherwise play any card. The highest card of the led suit wins unless a trump is played—in that case the highest trump wins.</li>
+          <li><b>Lock & score:</b> Click <b>Lock</b> when all bids are in. After the round, choose ✓ or ✗ to mark whether a player hit their bid. Scores (10 + bid for exact, 0 otherwise) tally automatically.</li>
+          <li><b>Track progress:</b> Live stats above the table highlight streaks, leaders, and which rounds still need attention.</li>
+          <li><b>Share with friends:</b> Use <b>Share Link</b> for live collaboration or tap <b>Export table as image</b> (unlocked whenever a round is completed) to download the scoreboard.</li>
         </ol>
       </section>
     </main>
